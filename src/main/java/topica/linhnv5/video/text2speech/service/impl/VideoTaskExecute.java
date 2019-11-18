@@ -26,6 +26,7 @@ import topica.linhnv5.video.text2speech.service.TaskService;
 import topica.linhnv5.video.text2speech.service.Text2SpeechService;
 import topica.linhnv5.video.text2speech.util.FileUtil;
 import topica.linhnv5.video.text2speech.video.VideoEncoding;
+import topica.linhnv5.video.text2speech.video.VideoEncodingException;
 
 /**
  * Execute class, runnable execute task code
@@ -147,9 +148,38 @@ public class VideoTaskExecute {
 
 	    g.setColor(Color.WHITE);
 	    g.setFont(dynamicFont3);
-	    g.drawString(vieSub, img.getWidth()/2-g.getFontMetrics().stringWidth(engSub)/2, img.getHeight()*3/4);
+	    g.drawString(vieSub, img.getWidth()/2-g.getFontMetrics().stringWidth(vieSub)/2, img.getHeight()*3/4);
 
 		return img;
+	}
+
+	private void writeListeningFrame(VideoEncoding videoEncoding, File input, BufferedImage listening1, BufferedImage listening2) throws VideoEncodingException {
+		// Set audio stream
+		videoEncoding.setCurrentAudio(input.getPath());
+
+		double audioTime = videoEncoding.getAudioTime();
+		double duration  = videoEncoding.getCurrentAudioDuration();
+
+		// Write to end of audio
+		while (videoEncoding.getAudioTime() - audioTime < duration+2) {
+			double curTime = videoEncoding.getAudioTime() - audioTime;
+			videoEncoding.writeVideoFrame((curTime/5) % 2 == 0 ? listening1 : listening2);
+//			System.out.println("Send Frame vtime="+videoEncoding.getVideoTime()+" atime="+videoEncoding.getAudioTime());
+		}
+	}
+
+	private void writeApiFrame(VideoEncoding videoEncoding, File input, BufferedImage apiFrame) throws VideoEncodingException {
+		// Set audio stream
+		videoEncoding.setCurrentAudio(input.getPath());
+
+		double audioTime = videoEncoding.getAudioTime();
+		double duration  = videoEncoding.getCurrentAudioDuration();
+
+		// Write to end of audio
+		while (videoEncoding.getAudioTime() - audioTime < duration+2) {
+			videoEncoding.writeVideoFrame(apiFrame);
+//			System.out.println("Send Frame vtime="+videoEncoding.getVideoTime()+" atime="+videoEncoding.getAudioTime());
+		}
 	}
 
 	@Autowired
@@ -168,93 +198,45 @@ public class VideoTaskExecute {
 
 		/// Lan 1 doc nhanh
 		// Input
-		File input = FileUtil.matchFileName(inFolder, "Test.mp3");
+		File input = FileUtil.matchFileName(inFolder, "EngSubFeMale.mp3");
 
 		// Write file
 		FileUtil.writeFileContent(input, text2SpeechService.text2Speech(engSub, "en-US_AllisonVoice"));
 
-		// Set audio stream
-		videoEncoding.setCurrentAudio(input.getPath());
-
-		while (!videoEncoding.isCurrentAudioEnd()) {
-			double videoTime = videoEncoding.getVideoTime();
-			double audioTime = videoEncoding.getAudioTime();
-
-			videoEncoding.writeVideoFrame(audioTime % 2 == 0 ? listening1 : listening2);
-
-			System.out.println("Frame: "+videoEncoding.getFrameCount()+" vtime="+videoTime+" atime="+audioTime+" progress="+progress);
-		}
-
-		// Nghi 2s
-		videoEncoding.seekAudioTime(5);
+		// Write listening
+		writeListeningFrame(videoEncoding, input, listening1, listening2);
 
 		/// Lan 2 Doc cham
 		String engSub2 = Stream.of(engSub.split(" ")).collect(Collectors.joining(". "));
 
 		// Input
-		input = FileUtil.matchFileName(inFolder, "Test.mp3");
+		input = FileUtil.matchFileName(inFolder, "EngSubFeMale.Slow.mp3");
 
 		// Write file
 		FileUtil.writeFileContent(input, text2SpeechService.text2Speech(engSub2, "en-US_AllisonVoice"));
 
-		// Set audio stream
-		videoEncoding.setCurrentAudio(input.getPath());
-
-		while (!videoEncoding.isCurrentAudioEnd()) {
-			double videoTime = videoEncoding.getVideoTime();
-			double audioTime = videoEncoding.getAudioTime();
-
-			videoEncoding.writeVideoFrame(audioTime % 2 == 0 ? listening1 : listening2);
-
-			System.out.println("Frame: "+videoEncoding.getFrameCount()+" vtime="+videoTime+" atime="+audioTime+" progress="+progress);
-		}
-
-		// Nghi 2s
-		videoEncoding.seekAudioTime(5);
+		// Write listening
+		writeListeningFrame(videoEncoding, input, listening1, listening2);
 
 		// Lan 3 Giong nam, doi ngu dieu
 		// Input
-		input = FileUtil.matchFileName(inFolder, "Test.mp3");
+		input = FileUtil.matchFileName(inFolder, "EngSubMale.mp3");
 
 		// Write file
 		FileUtil.writeFileContent(input, text2SpeechService.text2Speech(engSub, "en-US_MichaelV3Voice"));
 
-		// Set audio stream
-		videoEncoding.setCurrentAudio(input.getPath());
-
-		while (!videoEncoding.isCurrentAudioEnd()) {
-			double videoTime = videoEncoding.getVideoTime();
-			double audioTime = videoEncoding.getAudioTime();
-
-			videoEncoding.writeVideoFrame(apiFrame);
-
-			System.out.println("Frame: "+videoEncoding.getFrameCount()+" vtime="+videoTime+" atime="+audioTime+" progress="+progress);
-		}
-
-		// Nghi 2s
-		videoEncoding.seekAudioTime(5);
+		// Write api
+		writeApiFrame(videoEncoding, input, apiFrame);
 
 		// Lan 4 Tieng viet
 		// Input
-		input = FileUtil.matchFileName(inFolder, "Test.mp3");
+		input = FileUtil.matchFileName(inFolder, "VieSub.mp3");
 
 		// Write file
 		FileUtil.writeFileContent(input, text2SpeechService.text2SpeechFPT(vieSub, "banmai"));
 
-		// Set audio stream
-		videoEncoding.setCurrentAudio(input.getPath());
-
-		while (!videoEncoding.isCurrentAudioEnd()) {
-			double videoTime = videoEncoding.getVideoTime();
-			double audioTime = videoEncoding.getAudioTime();
-
-			videoEncoding.writeVideoFrame(apiFrame);
-
-			System.out.println("Frame: "+videoEncoding.getFrameCount()+" vtime="+videoTime+" atime="+audioTime+" progress="+progress);
-		}
-
-		// Nghi 2s
-		videoEncoding.seekAudioTime(5);
+		// Write api
+		writeApiFrame(videoEncoding, input, apiFrame);
 	}
 
 	/**
@@ -267,7 +249,7 @@ public class VideoTaskExecute {
 		Task task = execute.getTask();
 
 		// Output file
-		File output = FileUtil.matchFileName(outFolder, "Test.mp4");
+		File output = FileUtil.matchFileName(outFolder, "Output.mp4");
 
 		VideoEncoding videoEncoding = null;
 		try {
@@ -291,6 +273,7 @@ public class VideoTaskExecute {
 				String vieSub = s.getVieSub();
 
 				addText(videoEncoding, engSub, engApi, vieSub, i+1, sentences.size());
+				execute.setProgress((byte)(i*100/sentences.size()));
 			}
 		} catch(Exception e) {
 			e.printStackTrace();

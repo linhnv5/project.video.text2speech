@@ -163,15 +163,6 @@ public class VideoEncoding {
 	private boolean audioEnd = true;
 
 	/**
-	 * Create no sound time
-	 * @param time time in seconds
-	 */
-	public void seekAudioTime(double time) {
-		AVRational r = new AVRational(); r.num(1); r.den(audioStream.encodeCtx.sample_rate());
-		audioStream.samplesCount += time / av_q2d(r);
-	}
-
-	/**
 	 * Get current audio duration
 	 * @return duration of current audio input in seccond
 	 */
@@ -298,8 +289,8 @@ public class VideoEncoding {
 	     * av_codec_close(). */
 	    av_write_trailer(oc);
 
+        /* Close the output file. */
 		if ((fmt.flags() & AVFMT_NOFILE) > 0)
-	        /* Close the output file. */
 	        avio_close(oc.pb());
 
 		/* free the stream */
@@ -316,6 +307,7 @@ public class VideoEncoding {
 	    long nextPts;
 
 	    AVFrame frame;
+	    AVFrame tmpFrame;
 
 		int frameCount;
 	    int samplesCount;
@@ -325,14 +317,15 @@ public class VideoEncoding {
 	};
 
 	public static String av_err2str(int errnum) {
-		BytePointer data = new BytePointer(new byte[AV_ERROR_MAX_STRING_SIZE]);
+		BytePointer data = new BytePointer(AV_ERROR_MAX_STRING_SIZE);
 		av_make_error_string(data, AV_ERROR_MAX_STRING_SIZE, errnum);
 		return data.getString();
 	}
 
 	private int writeFrame(AVFormatContext ctx, AVRational timeBase, AVStream st, AVPacket pkt) {
-	    /* rescale output packet timestamp values from codec to stream timebase */
+		/* Set stream index */
 	    pkt.stream_index(st.index());
+	    /* rescale output packet timestamp values from codec to stream timebase */
 	    av_packet_rescale_ts(pkt, timeBase, st.time_base());
 	    /* Write the compressed frame to the media file. */
 	    return av_interleaved_write_frame(ctx, pkt);
@@ -351,7 +344,7 @@ public class VideoEncoding {
 		AVStream st = stx.st;
 		AVCodecContext c = stx.encodeCtx;
 
-		System.out.println("Write frame st="+st.index()+" time="+av_stream_get_end_pts(st) * av_q2d(st.time_base()));
+		System.out.println("WriteFrame st="+st.index()+" time="+av_stream_get_end_pts(st) * av_q2d(st.time_base()));
 
 		/* encode the image */
 	    ret = avcodec_send_frame(c, frame);
@@ -377,8 +370,6 @@ public class VideoEncoding {
 
             av_packet_unref(pkt);
         }
-
-        stx.frameCount++;
 	}
 
 	/**************************************************************/
@@ -479,7 +470,8 @@ public class VideoEncoding {
 	    else
 	        nb_samples = c.frame_size();
 
-	    ost.frame = allocAudioFrame(c.sample_fmt(), c.channel_layout(), c.sample_rate(), nb_samples);
+	    ost.frame    = allocAudioFrame(c.sample_fmt(), c.channel_layout(), c.sample_rate(), nb_samples);
+		ost.tmpFrame = allocAudioFrame(c.sample_fmt(), c.channel_layout(), c.sample_rate(), nb_samples);
 
 	    /* create resampler context */
         ost.swrCtx = swr_alloc();
@@ -488,12 +480,49 @@ public class VideoEncoding {
         	throw new VideoEncodingException("Could not allocate resampler context");
 	}
 
-    /**
-     * Send audio frame to encode
-     * @param frame the video frame
-     * @throws VideoEncodingException
-     */
-    private void audioSendFrame(AVFrame frame) throws VideoEncodingException {
+	/* Prepare a 16 bit dummy audio frame of 'frame_size' samples and
+	 * 'nb_channels' channels. */
+	private void getAudioFrame() {
+		AVOutputStream ost = audioStream;
+	    AVFrame frame = ost.tmpFrame;
+
+	    int j, i, v; int k = 0;
+
+	    for (j = 0; j < frame.nb_samples(); j++) {
+	        v = 0;
+	        for (i = 0; i < ost.encodeCtx.channels(); i++) {
+	        	frame.data(0).put(k++, (byte) v);
+	        	frame.data(0).put(k++, (byte) (v >> 8));
+	        }
+	    }
+
+	    frame.pts(ost.nextPts);
+	    ost.nextPts  += frame.nb_samples();
+	}
+
+	/**
+	 * Write audio frame
+	 * @throws VideoEncodingException
+	 */
+    private void writeAudioFrame() throws VideoEncodingException {
+    	int ret;
+
+	    AVFrame frame      = audioStream.frame;
+		AVFrame tframe     = audioStream.tmpFrame;
+
+	    AVCodecContext c   = audioStream.encodeCtx;
+	    SwrContext swrCtx  = audioStream.swrCtx;
+
+	    /* convert to destination format */
+        ret = swr_convert(swrCtx, frame.data(), frame.nb_samples(), tframe.data(), tframe.nb_samples());
+        if (ret < 0)
+        	throw new VideoEncodingException("Error while converting");
+
+        AVRational r = new AVRational(); r.num(1); r.den(c.sample_rate());
+        frame.pts(av_rescale_q(audioStream.samplesCount, r, c.time_base()));
+        audioStream.samplesCount += frame.nb_samples();
+
+        /* send the frame for encoding */
         sendAVFrame(audioStream, frame);
     }
 
@@ -501,69 +530,48 @@ public class VideoEncoding {
 	 * Write audio frame
 	 * @throws VideoEncodingException
 	 */
-    private void writeAudioFrame() throws VideoEncodingException {
+    private void writeNextAudioFrame() throws VideoEncodingException {
     	int ret;
 
-    	AVStream st    = inputAudioStream;
-	    AVFrame frame  = audioStream.frame;
+    	AVStream st        = inputAudioStream;
+		AVFrame tframe     = audioStream.tmpFrame;
 
-		AVPacket pkt = new AVPacket();
+		if (audioEnd) {
+			getAudioFrame();
+			writeAudioFrame();
+	    } else {
+			AVPacket pkt = new AVPacket();
 
-		do {
-	        // Return the next frame of a stream.
-			if (av_read_frame(inputAudioCtx, pkt) < 0) {
-				audioEnd = true;
-				return;
-			}
-		} while (pkt.stream_index() != st.index());
+			do {
+		        // Return the next frame of a stream.
+		        ret = av_read_frame(inputAudioCtx, pkt);
+				if (ret < 0) {
+					System.out.println("Read frame: "+av_err2str(ret));
+					audioEnd = true;
+					return;
+				}
+			} while (pkt.stream_index() != st.index());
 
-		// Decoder
-	    /* send the packet with the compressed data to the decoder */
-	    ret = avcodec_send_packet(decodeCtx, pkt);
-	    if (ret < 0)
-	        throw new VideoEncodingException("Error submitting the packet to the decoder");
-	    av_packet_unref(pkt);
+			// Decoder
+		    /* send the packet with the compressed data to the decoder */
+		    ret = avcodec_send_packet(decodeCtx, pkt);
+		    if (ret < 0)
+		        throw new VideoEncodingException("Error submitting the packet to the decoder");
+		    av_packet_unref(pkt);
 
-	    AVCodecContext c   = audioStream.encodeCtx;
-	    SwrContext swrCtx  = audioStream.swrCtx;
+			/* read all the output frames (in general there may be any number of them */
+		    while (ret >= 0) {
+		        ret = avcodec_receive_frame(decodeCtx, tframe);
 
-	    int nb_samples;
+		        if (ret == AVERROR_EAGAIN() || ret == AVERROR_EOF)
+		        	return;
 
-	    if ((c.codec().capabilities() & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)
-	        nb_samples = 10000;
-	    else
-	        nb_samples = c.frame_size();
+		        if (ret < 0)
+		            throw new VideoEncodingException("Error during decoding");
 
-		AVFrame tframe = allocAudioFrame(c.sample_fmt(), c.channel_layout(), c.sample_rate(), nb_samples);
-
-		/* read all the output frames (in general there may be any number of them */
-	    while (ret >= 0) {
-	        ret = avcodec_receive_frame(decodeCtx, tframe);
-
-	        if (ret == AVERROR_EAGAIN() || ret == AVERROR_EOF)
-	        	return;
-
-	        if (ret < 0)
-	            throw new VideoEncodingException("Error during decoding");
-
-		    /* convert samples from native format to destination codec format, using the resampler */
-	    	/* compute destination number of samples */
-//	    	int dst_nb_samples = (int) av_rescale_rnd(swr_get_delay(swrCtx, c.sample_rate()) + tframe.nb_samples(), c.sample_rate(), c.sample_rate(), AV_ROUND_UP);
-
-	    	/* convert to destination format */
-	        ret = swr_convert(swrCtx, frame.data(), frame.nb_samples(), tframe.data(), tframe.nb_samples());
-	        if (ret < 0)
-	        	throw new VideoEncodingException("Error while converting");
-
-	        AVRational r = new AVRational(); r.num(1); r.den(c.sample_rate());
-	        frame.pts(av_rescale_q(audioStream.samplesCount, r, c.time_base()));
-	        audioStream.samplesCount += frame.nb_samples();
-
-	        /* send the frame for encoding */
-	        audioSendFrame(frame);
+		        writeAudioFrame();
+		    }
 	    }
-	    
-	    av_frame_free(tframe);
     }
    
     /**
@@ -580,7 +588,7 @@ public class VideoEncoding {
      */
     private void closeAudio() throws VideoEncodingException {
     	// flush video
-		audioSendFrame(null);
+        sendAVFrame(audioStream, null);
 
 		closeAudioInput();
     	closeStream(audioStream);
@@ -694,36 +702,32 @@ public class VideoEncoding {
     private void openVideo() throws VideoEncodingException {
 	    AVCodecContext c = videoStream.encodeCtx;
 
-	    /* Allocate the encoded raw picture. */
+	    /* sws context */
+    	videoStream.swsCtx = sws_getContext(c.width(), c.height(), AV_PIX_FMT_0RGB32, c.width(), c.height(), AV_PIX_FMT_YUV420P, SWS_BICUBIC, null, null, (DoublePointer) null);
+
+    	/* Allocate the encoded raw picture. */
 	    videoStream.frame = allocVideoFrame(c.pix_fmt(), c.width(), c.height());
 	}
 
-    /**
-     * Send video frame to encode
-     * @param frame the video frame
-     * @throws VideoEncodingException
-     */
-    private void videoSendFrame(AVFrame frame) throws VideoEncodingException {
-    	sendAVFrame(videoStream, frame);
-    }
+    private void writeVideoFrame() throws VideoEncodingException {
+    	// 
+		videoStream.frame.pts(videoStream.nextPts++);
 
-    /**
+		// Frame count
+		videoStream.frameCount++;
+
+        // Add frames
+    	sendAVFrame(videoStream, videoStream.frame);
+    }
+   
+	/**
      * Write next video frame in argb format
      * @param data rgb data
      * @throws VideoEncodingException
      */
-	public void writeVideoFrame(PointerPointer<BytePointer> data) throws VideoEncodingException {
+	private void writeVideoFrame(PointerPointer<BytePointer> data) throws VideoEncodingException {
 	    AVCodecContext c = videoStream.encodeCtx;
 	    AVFrame frame = videoStream.frame;
-
-	    // Check audio time
-	    while (audioStream != null && !audioEnd && getAudioTime() < getVideoTime())
-	    	writeAudioFrame();
-
-	    // 
-	    if (videoStream.swsCtx == null)
-	    	videoStream.swsCtx = sws_getContext(c.width(), c.height(), AV_PIX_FMT_0RGB32, c.width(), c.height(), AV_PIX_FMT_YUV420P, SWS_BICUBIC, null, null, (DoublePointer) null);
-
 	    SwsContext swsCtx = videoStream.swsCtx;
 
 	    IntPointer inLinesize = new IntPointer(new int[] {4 * c.width()});
@@ -731,21 +735,11 @@ public class VideoEncoding {
         // From RGB to YUV
         sws_scale(swsCtx, data, inLinesize, 0, c.height(), frame.data(), frame.linesize());
 
-        // 
-        frame.pts(videoStream.nextPts++);
-
-        // Add frames
-	    videoSendFrame(frame);
+	    // 
+        writeVideoFrame();
 	}
 
-    /**
-     * Write next video frame in argb format
-     * @param rgb rgb data
-     * @throws VideoEncodingException
-     */
-	public void writeVideoFrame(int[] rgb) throws VideoEncodingException {
-		writeVideoFrame(new PointerPointer<BytePointer>(rgb));
-	}
+	private BufferedImage current;
 
 	/**
 	 * Write next video frame
@@ -753,9 +747,19 @@ public class VideoEncoding {
 	 * @throws VideoEncodingException
 	 */
 	public void writeVideoFrame(BufferedImage image) throws VideoEncodingException {
+	    // Check audio time
+	    while (audioStream != null && getAudioTime() < getVideoTime())
+	    	writeNextAudioFrame();
+
+	    if (image != null && image == current) {
+			writeVideoFrame();
+			return;
+		}
+
+		current = image;
 		int[] rgb = new int[image.getWidth()*image.getHeight()];
 		image.getRGB(0, 0, image.getWidth(), image.getHeight(), rgb, 0, image.getWidth());
-		writeVideoFrame(rgb);
+		writeVideoFrame(new PointerPointer<BytePointer>(rgb));
 	}
 
 	/**
@@ -772,8 +776,9 @@ public class VideoEncoding {
 	 */
 	private void closeVideo() throws VideoEncodingException {
 		// flush video
-		videoSendFrame(null);
+        sendAVFrame(videoStream, null);
 
+        // close video stream
 		closeStream(videoStream);
 	}
 
@@ -784,19 +789,14 @@ public class VideoEncoding {
 		if (ost.frame != null)
 			av_frame_free(ost.frame);
 
-	    if (ost.swsCtx != null)
+		if (ost.tmpFrame != null)
+			av_frame_free(ost.tmpFrame);
+
+		if (ost.swsCtx != null)
 	    	sws_freeContext(ost.swsCtx);
 
 	    if (ost.swrCtx != null)
 	    	swr_free(ost.swrCtx);
-	}
-
-	/**
-	 * Get current frame count
-	 * @return the frame count
-	 */
-	public int getFrameCount() {
-		return videoStream.frameCount;
 	}
 
 }
