@@ -1,0 +1,38 @@
+package topica.linhnv5.video.text2speech.service;
+
+import topica.linhnv5.video.text2speech.model.Task;
+import topica.linhnv5.video.text2speech.model.TaskExecute;
+
+/**
+ * Task service, provide function to create and manage task
+ * @author ljnk975
+ */
+public interface TaskService {
+
+	/**
+	 * Get task by id
+	 * @param id id of task
+	 * @return   The task
+	 */
+	public Task getTaskById(String id);
+
+	/**
+	 * Get execute task by id
+	 * @param id id of task
+	 * @return the task
+	 */
+	public TaskExecute getTaskExecuteById(String id);
+
+	/**
+	 * Add a task
+	 * @param execute the task execute
+	 */
+	public void addTask(TaskExecute execute);
+
+	/**
+	 * Save task result
+	 * @param execute the task execute
+	 */
+	public void saveResult(TaskExecute execute);
+
+}
