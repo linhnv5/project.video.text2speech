@@ -136,7 +136,7 @@ public class ApiController {
 //	        System.out.println("Api: "+s.getEngApi()+" api2: "+text2SpeechService.getPronoun(s.getEngSub()));
 
 	        // check
-//	        if (s.getEngApi() == null)
+	        if (s.getEngApi() == null)
 	        	s.setEngApi(text2SpeechService.getPronoun(s.getEngSub()));
 	        
 	        if (s.getVieSub() == null)
