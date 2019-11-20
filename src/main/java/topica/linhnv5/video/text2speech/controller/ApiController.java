@@ -26,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.google.cloud.translate.Translate;
+import com.google.cloud.translate.Translate.TranslateOption;
 import com.google.common.net.HttpHeaders;
 
 import io.swagger.annotations.Api;
@@ -39,6 +41,7 @@ import topica.linhnv5.video.text2speech.model.Sentence;
 import topica.linhnv5.video.text2speech.model.Task;
 import topica.linhnv5.video.text2speech.model.TaskExecute;
 import topica.linhnv5.video.text2speech.service.TaskService;
+import topica.linhnv5.video.text2speech.service.Text2SpeechService;
 import topica.linhnv5.video.text2speech.service.VideoTaskService;
 import topica.linhnv5.video.text2speech.util.FileUtil;
 
@@ -63,6 +66,12 @@ public class ApiController {
 
 	@Autowired
 	private VideoTaskService videoTaskService;
+
+	@Autowired
+	private Translate translate;
+	
+	@Autowired
+	private Text2SpeechService text2SpeechService;
 
 	@SuppressWarnings("resource")
 	private List<Sentence> readSentences(File configFile) throws Exception {
@@ -116,15 +125,25 @@ public class ApiController {
 				}
 	        }
 	        
-	        System.out.println("Eng: "+s.getEngSub()+" api: "+s.getEngApi()+" vie: "+s.getVieSub());
-
 	        // Cheek
-	        if (s.getEngSub() == null || s.getEngApi() == null || s.getVieSub() == null)
+	        if (s.getEngSub() == null)
 	        	throw new Exception("Row "+data.getRowNum()+" error!");
 	        
 	        if (s.getEngSub().equals(""))
 	        	continue;
+
+	        System.out.println("Eng: "+s.getEngSub()+" vie: "+s.getVieSub());
+//	        System.out.println("Api: "+s.getEngApi()+" api2: "+text2SpeechService.getPronoun(s.getEngSub()));
+
+	        // check
+//	        if (s.getEngApi() == null)
+	        	s.setEngApi(text2SpeechService.getPronoun(s.getEngSub()));
 	        
+	        if (s.getVieSub() == null)
+	        	s.setVieSub(translate.translate(s.getEngSub(),
+	    				TranslateOption.sourceLanguage("en"),
+	    				TranslateOption.targetLanguage("vi")).getTranslatedText());
+
 	        sentences.add(s);
         }
     
@@ -167,7 +186,7 @@ public class ApiController {
 			// Return task name
 			response = new TaskCreate("SUCCESS", "", task.getId());
 		} catch (Exception e) {
-			System.out.println("   err: "+e.getMessage());
+			e.printStackTrace();
 			response = new TaskCreate("ERROR", e.getMessage(), "");
 		}
 

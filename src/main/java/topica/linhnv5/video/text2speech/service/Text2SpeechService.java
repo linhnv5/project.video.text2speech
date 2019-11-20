@@ -7,6 +7,14 @@ package topica.linhnv5.video.text2speech.service;
 public interface Text2SpeechService {
 
 	/**
+	 * get pronoun of text
+	 * @param text
+	 * @return
+	 * @throws Exception
+	 */
+	public String getPronoun(String text) throws Exception;
+
+	/**
 	 * Covert text to speech
 	 * @param text
 	 * @param voice
