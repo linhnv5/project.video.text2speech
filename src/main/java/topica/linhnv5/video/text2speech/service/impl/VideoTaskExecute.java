@@ -5,9 +5,6 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.BufferedImageOp;
-import java.awt.image.ConvolveOp;
-import java.awt.image.Kernel;
 import java.io.File;
 import java.util.List;
 
@@ -61,7 +58,6 @@ public class VideoTaskExecute {
 	private BufferedImage time;
 	private BufferedImage time2;
 	private BufferedImage listening;
-	private BufferedImage listening2;
 	private BufferedImage number;
 
 	/**
@@ -77,15 +73,6 @@ public class VideoTaskExecute {
 			time2        = ImageIO.read(new File(workingFolder+"1x"+File.separator+"time2.png"));
 			listening    = ImageIO.read(new File(workingFolder+"1x"+File.separator+"listening.png"));
 			number       = ImageIO.read(new File(workingFolder+"1x"+File.separator+"number.png"));
-
-			// Blur listening
-			float[] filter = new float[400];
-			for (int i = 0; i < filter.length; i++)
-				filter[i] = 1F/400F;
-
-			Kernel kernel = new Kernel(20, 20, filter);
-			BufferedImageOp op = new ConvolveOp(kernel, ConvolveOp.EDGE_NO_OP, null);
-			listening2 = op.filter(listening, null);
 		}
 	}
 
@@ -118,7 +105,7 @@ public class VideoTaskExecute {
 	    g.drawString(number, 1785-g.getFontMetrics().stringWidth(number)/2, 915-g.getFontMetrics().getHeight()/2+g.getFontMetrics().getAscent());
 	}
 
-	private BufferedImage createListeningFrame(boolean blur, float alpha, int i, int max) throws Exception {
+	private BufferedImage createListeningFrame(float alpha, int i, int max) throws Exception {
 		// Create outpur image
 		BufferedImage img = new BufferedImage(background.getWidth(), background.getHeight(), BufferedImage.TYPE_4BYTE_ABGR);
 
@@ -129,11 +116,11 @@ public class VideoTaskExecute {
 		drawBack(g, i, max);
 
         // Set the Graphics composite to Alpha
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+//        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 
         // Listening
 		int w = listening.getWidth()/2; int h = listening.getHeight()/2;
-		g.drawImage(blur ? listening : listening2, background.getWidth()/2-w/2, background.getHeight()/2-h/2, w, h, null);
+		g.drawImage(listening, background.getWidth()/2-w/2, background.getHeight()/2-h/2, w, h, null);
 		
 		return img;
 	}
@@ -172,7 +159,7 @@ public class VideoTaskExecute {
 		return img;
 	}
 
-	private void writeListeningFrame(VideoEncoding videoEncoding, File input, BufferedImage listening1, BufferedImage listening2, double audioTime, double delayIn, double delayOut) throws VideoEncodingException {
+	private void writeListeningFrame(VideoEncoding videoEncoding, File input, BufferedImage listening, double audioTime, double delayIn, double delayOut) throws VideoEncodingException {
 		double startTime = videoEncoding.getAudioTime(), duration;
 
 		// Start and duration
@@ -181,7 +168,7 @@ public class VideoTaskExecute {
 
 		// 1s delay
 		while (videoEncoding.getAudioTime() - startTime < duration)
-			videoEncoding.writeVideoFrame(listening1);
+			videoEncoding.writeVideoFrame(listening);
 
 		// Set audio stream
 		videoEncoding.setCurrentAudio(input.getPath());
@@ -192,7 +179,7 @@ public class VideoTaskExecute {
 
 		// Write to end of audio
 		while (videoEncoding.getAudioTime() - startTime < duration)
-			videoEncoding.writeVideoFrame(listening1);
+			videoEncoding.writeVideoFrame(listening);
 
 		// Start and duration
 		startTime = videoEncoding.getAudioTime();
@@ -200,7 +187,7 @@ public class VideoTaskExecute {
 
 		// 1s delay
 		while (videoEncoding.getAudioTime() - startTime < duration)
-			videoEncoding.writeVideoFrame(listening1);
+			videoEncoding.writeVideoFrame(listening);
 	}
 
 	private void writeApiFrame(VideoEncoding videoEncoding, File input, BufferedImage apiFrame, double delayIn, double delayOut) throws VideoEncodingException {
@@ -239,8 +226,7 @@ public class VideoTaskExecute {
 
 	private void addText(VideoEncoding videoEncoding, String engSub, String engApi, String vieSub, int i, int max) throws Exception {
 		// Encode video
-		BufferedImage listening1 = createListeningFrame(false, 1.0F, i, max);
-		BufferedImage listening2 = createListeningFrame(true, 1.0F, i, max);
+		BufferedImage listening = createListeningFrame(1.0F, i, max);
 
 		// Write out video
 		BufferedImage apiFrame = createAPIFrame(engSub, engApi, vieSub, 1.0F, i, max);
@@ -256,7 +242,7 @@ public class VideoTaskExecute {
 		double audioTime = videoEncoding.getAudioTime();
 
 		// Write listening
-		writeListeningFrame(videoEncoding, input, listening1, listening2, audioTime, 1.0, 2.0);
+		writeListeningFrame(videoEncoding, input, listening, audioTime, 1.0, 2.0);
 
 		/// Lan 2 Doc cham
 		String engSub2 = engSub.replaceAll(", ", ". ").replaceAll(" ",  ". ");
@@ -268,7 +254,7 @@ public class VideoTaskExecute {
 		FileUtil.writeFileContent(input, text2SpeechService.text2Speech(engSub2, "en-US_AllisonVoice"));
 
 		// Write listening
-		writeListeningFrame(videoEncoding, input, listening1, listening2, audioTime, 0.0, 1.0);
+		writeListeningFrame(videoEncoding, input, listening, audioTime, 0.0, 1.0);
 
 		// Lan 3 Giong nam, doi ngu dieu
 		// Input

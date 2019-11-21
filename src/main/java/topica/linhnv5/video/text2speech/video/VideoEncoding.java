@@ -298,9 +298,9 @@ public class VideoEncoding {
 	    av_write_trailer(oc);
 
         /* Close the output file. */
-		if ((fmt.flags() & AVFMT_NOFILE) > 0) {
+	    if ((fmt.flags() & AVFMT_NOFILE) == 0) {
 			System.out.println("Close output");
-			avio_close(oc.pb());
+			avio_closep(oc.pb());
 		}
 
 		/* free the stream */
@@ -344,11 +344,17 @@ public class VideoEncoding {
 	 * @return error string
 	 */
 	public static String av_err2str(int errnum) {
-		BytePointer data = new BytePointer(AV_ERROR_MAX_STRING_SIZE);
-		av_make_error_string(data, AV_ERROR_MAX_STRING_SIZE, errnum);
-		String ret = data.getString();
-		data.deallocate();
-		return ret;
+		BytePointer data = null;
+		try {
+			data = new BytePointer(AV_ERROR_MAX_STRING_SIZE);
+			av_make_error_string(data, AV_ERROR_MAX_STRING_SIZE, errnum);
+			return data.getString();
+		} finally {
+			try {
+				data.deallocate();
+			} catch(Exception e) {
+			}
+		}
 	}
 
 	/**
@@ -759,7 +765,7 @@ public class VideoEncoding {
 	    videoStream.frame = allocVideoFrame(c.pix_fmt(), c.width(), c.height());
 	    
 	    /* Current video */
-//	    current = new BufferedImage(c.width(), c.height(), BufferedImage.TYPE_4BYTE_ABGR);
+	    current = new BufferedImage(c.width(), c.height(), BufferedImage.TYPE_4BYTE_ABGR);
 	}
 
     /**
@@ -792,19 +798,24 @@ public class VideoEncoding {
 	    AVFrame frame = stx.frame;
 
 	    //
-	    IntPointer inLinesize = new IntPointer(new int[] {4 * c.width()});
+	    IntPointer inLinesize = null;
+	    try {
+		    inLinesize = new IntPointer(new int[] {4 * c.width()});
 
-        // From RGB to YUV
-        sws_scale(stx.swsCtx, data, inLinesize, 0, c.height(), frame.data(), frame.linesize());
+	        // From RGB to YUV
+	        sws_scale(stx.swsCtx, data, inLinesize, 0, c.height(), frame.data(), frame.linesize());
 
-        // 
-        inLinesize.deallocate();
-
-        // 
-        writeVideoFrame(stx);
+	        // 
+	        writeVideoFrame(stx);
+	    } finally {
+	    	try {
+	    		inLinesize.deallocate();
+	    	} catch(Exception e) {
+	    	}
+	    }
 	}
 
-//	private BufferedImage current;
+	private BufferedImage current;
 
 	/**
 	 * Write next video frame
@@ -812,16 +823,23 @@ public class VideoEncoding {
 	 * @throws VideoEncodingException
 	 */
 	public void writeVideoFrame(BufferedImage image) throws VideoEncodingException {
-//	    if (image == current) {
-//			writeVideoFrame(videoStream);
-//			return;
-//	    }
-//	    current = image;
+	    if (image == current) {
+			writeVideoFrame(videoStream);
+			return;
+	    }
+	    current = image;
 		int[] rgb = new int[image.getWidth()*image.getHeight()];
 		image.getRGB(0, 0, image.getWidth(), image.getHeight(), rgb, 0, image.getWidth());
-		PointerPointer<BytePointer> pointer = new PointerPointer<BytePointer>(rgb);
-		writeVideoFrame(videoStream, pointer);
-		pointer.deallocate();
+		PointerPointer<BytePointer> pointer = null;
+		try {
+			pointer = new PointerPointer<BytePointer>(rgb);
+			writeVideoFrame(videoStream, pointer);
+		} finally {
+			try {
+				pointer.deallocate();
+			} catch(Exception e) {
+			}
+		}
 	}
 
 	/**
