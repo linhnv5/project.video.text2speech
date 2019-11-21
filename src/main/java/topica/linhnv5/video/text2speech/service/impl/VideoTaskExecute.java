@@ -180,10 +180,8 @@ public class VideoTaskExecute {
 		duration  = delayIn;
 
 		// 1s delay
-		while (videoEncoding.getAudioTime() - startTime < duration) {
-			double curTime = videoEncoding.getAudioTime()-audioTime;
-			videoEncoding.writeVideoFrame((int)curTime % 2 == 0 ? listening1 : listening2);
-		}
+		while (videoEncoding.getAudioTime() - startTime < duration)
+			videoEncoding.writeVideoFrame(listening1);
 
 		// Set audio stream
 		videoEncoding.setCurrentAudio(input.getPath());
@@ -193,20 +191,16 @@ public class VideoTaskExecute {
 		duration  = videoEncoding.getCurrentAudioDuration();
 
 		// Write to end of audio
-		while (videoEncoding.getAudioTime() - startTime < duration) {
-			double curTime = videoEncoding.getAudioTime()-audioTime;
-			videoEncoding.writeVideoFrame((int)curTime % 2 == 0 ? listening1 : listening2);
-		}
+		while (videoEncoding.getAudioTime() - startTime < duration)
+			videoEncoding.writeVideoFrame(listening1);
 
 		// Start and duration
 		startTime = videoEncoding.getAudioTime();
 		duration  = delayOut;
 
 		// 1s delay
-		while (videoEncoding.getAudioTime() - startTime < duration) {
-			double curTime = videoEncoding.getAudioTime()-audioTime;
-			videoEncoding.writeVideoFrame((int)curTime % 2 == 0 ? listening1 : listening2);
-		}
+		while (videoEncoding.getAudioTime() - startTime < duration)
+			videoEncoding.writeVideoFrame(listening1);
 	}
 
 	private void writeApiFrame(VideoEncoding videoEncoding, File input, BufferedImage apiFrame, double delayIn, double delayOut) throws VideoEncodingException {
