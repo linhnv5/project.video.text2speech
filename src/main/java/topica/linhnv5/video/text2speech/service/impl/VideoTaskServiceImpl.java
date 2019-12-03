@@ -1,11 +1,9 @@
 package topica.linhnv5.video.text2speech.service.impl;
 
-import java.util.List;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import topica.linhnv5.video.text2speech.model.Sentence;
+import topica.linhnv5.video.text2speech.model.Conversation;
 import topica.linhnv5.video.text2speech.model.Task;
 import topica.linhnv5.video.text2speech.model.TaskExecute;
 import topica.linhnv5.video.text2speech.service.TaskService;
@@ -28,7 +26,7 @@ public class VideoTaskServiceImpl implements VideoTaskService {
 	private VideoTaskExecute execute;
 
 	@Override
-	public Task createVideoTask(List<Sentence> sentences) throws VideoTaskException {
+	public Task createVideoTask(Conversation conversation) throws VideoTaskException {
 		// Create task
 		TaskExecute task = new TaskExecute();
 
@@ -37,7 +35,7 @@ public class VideoTaskServiceImpl implements VideoTaskService {
 			taskService.addTask(task);
 
 			// Create async job
-			execute.doVideoTask(sentences, task);
+			execute.doVideoTask(conversation, task);
 		} catch(Exception e) {
 			e.printStackTrace();
 			throw new VideoTaskException(e.getMessage());

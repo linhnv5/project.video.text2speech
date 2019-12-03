@@ -3,10 +3,14 @@ package topica.linhnv5.video.text2speech.service.impl;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.imageio.ImageIO;
 
@@ -15,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import topica.linhnv5.video.text2speech.model.Conversation;
 import topica.linhnv5.video.text2speech.model.Sentence;
 import topica.linhnv5.video.text2speech.model.Task;
 import topica.linhnv5.video.text2speech.model.TaskExecute;
@@ -76,6 +81,35 @@ public class VideoTaskExecute {
 		}
 	}
 
+	/**
+	 * Split string if string width out maxw
+	 * @return the string has splited
+	 */
+	public String[] split(String s, int maxw, FontMetrics metric) {
+		String[] as = s.split(" ");
+		List<String> list = new ArrayList<String>();
+
+		StringBuilder buff = new StringBuilder();
+		for (int i = 0; i < as.length; i++) {
+			if (buff.length() > 0)
+				buff.append(" ");
+			if (metric.stringWidth(buff.toString()+as[i]) > maxw) {
+				list.add(buff.toString()); buff.setLength(0);
+			}
+			buff.append(as[i]);
+		}
+		if (buff.length() > 0)
+			list.add(buff.toString());
+	
+		return list.toArray(new String[0]);
+	}
+
+	/**
+	 * Draw background frame
+	 * @param g
+	 * @param i
+	 * @param max
+	 */
 	private void drawBack(Graphics2D g, int i, int max) {
 		// progress y
 		int fromY = 194; int toY = 876; int numb = toY - fromY;
@@ -146,7 +180,10 @@ public class VideoTaskExecute {
 
 	    g.setColor(new Color(247, 173, 70));
 	    g.setFont(dynamicFont1);
-	    g.drawString(engSub, img.getWidth()/2-g.getFontMetrics().stringWidth(engSub)/2, img.getHeight()/4);
+
+	    String[] as = split(engSub, 1800, g.getFontMetrics());
+	    for (i = 0; i < as.length; i++)
+	    	g.drawString(as[i], img.getWidth()/2-g.getFontMetrics().stringWidth(as[i])/2, img.getHeight()/4+g.getFontMetrics().getHeight()*i);
 
 	    g.setColor(Color.BLUE);
 	    g.setFont(dynamicFont2);
@@ -154,7 +191,10 @@ public class VideoTaskExecute {
 
 	    g.setColor(Color.WHITE);
 	    g.setFont(dynamicFont3);
-	    g.drawString(vieSub, img.getWidth()/2-g.getFontMetrics().stringWidth(vieSub)/2, img.getHeight()*3/4);
+
+	    as = split(vieSub, 1800, g.getFontMetrics());
+	    for (i = 0; i < as.length; i++)
+	    	g.drawString(as[i], img.getWidth()/2-g.getFontMetrics().stringWidth(as[i])/2, img.getHeight()*3/4+g.getFontMetrics().getHeight()*i);
 
 		return img;
 	}
@@ -224,6 +264,13 @@ public class VideoTaskExecute {
 	@Autowired
 	private Text2SpeechService text2SpeechService;
 
+	private String createSlowListening(String engSub) {
+		return Stream.of(engSub.replaceAll("[,.?!]", " ").split(" "))
+				.map(s -> s.equals("") ? "" : s.equalsIgnoreCase("i") || s.equalsIgnoreCase("a") ? s+": " : s+". ")
+				.collect(Collectors.joining());
+//		return engSub.replaceAll("[,.?!]", " ").replace(" ",  ". ");		
+	}
+
 	private void addText(VideoEncoding videoEncoding, String engSub, String engApi, String vieSub, int i, int max) throws Exception {
 		// Encode video
 		BufferedImage listening = createListeningFrame(1.0F, i, max);
@@ -245,7 +292,7 @@ public class VideoTaskExecute {
 		writeListeningFrame(videoEncoding, input, listening, audioTime, 1.0, 2.0);
 
 		/// Lan 2 Doc cham
-		String engSub2 = engSub.replaceAll(", ", ". ").replaceAll(" ",  ". ");
+		String engSub2 = createSlowListening(engSub);
 
 		// Input
 		input = FileUtil.matchFileName(inFolder, "EngSubFeMale.Slow.mp3");
@@ -282,7 +329,7 @@ public class VideoTaskExecute {
 	 * @param execute the task execute
 	 */
 	@Async("threadPoolExecutor")
-	public void doVideoTask(List<Sentence> sentences, TaskExecute execute) {
+	public void doVideoTask(Conversation conversation, TaskExecute execute) {
 		// The task
 		Task task = execute.getTask();
 
@@ -301,15 +348,15 @@ public class VideoTaskExecute {
 			videoEncoding = new VideoEncoding(output.getPath(), background.getWidth(), background.getHeight());
 
 			// Sub frame
-			for (int i = 0; i < sentences.size(); i++) {
-				Sentence s = sentences.get(i);
+			for (int i = 0, size = conversation.getListOfSentences().size(); i < size; i++) {
+				Sentence s = conversation.getListOfSentences().get(i);
 
 				String engSub = s.getEngSub();
 				String engApi = s.getEngApi();
 				String vieSub = s.getVieSub();
 
-				addText(videoEncoding, engSub, engApi, vieSub, i+1, sentences.size());
-				execute.setProgress((byte)(i*100/sentences.size()));
+				addText(videoEncoding, engSub, engApi, vieSub, i+1, size);
+				execute.setProgress((byte)(i*100/size));
 				System.out.println("Task progress: "+execute.getProgress());
 			}
 		} catch(Exception e) {

@@ -1,5 +1,11 @@
 package topica.linhnv5.video.text2speech.model;
 
+/**
+ * This class hold information about a sentence
+ * 
+ * @author ljnk975
+ *
+ */
 public class Sentence {
 
 	private String engSub;

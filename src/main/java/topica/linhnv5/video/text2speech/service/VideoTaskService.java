@@ -1,8 +1,6 @@
 package topica.linhnv5.video.text2speech.service;
 
-import java.util.List;
-
-import topica.linhnv5.video.text2speech.model.Sentence;
+import topica.linhnv5.video.text2speech.model.Conversation;
 import topica.linhnv5.video.text2speech.model.Task;
 
 /**
@@ -13,9 +11,11 @@ public interface VideoTaskService {
 
 	/**
 	 * Create task
-	 * @return
+	 * 
+	 * @param conversation The conversation
+	 * @return the task
 	 * @throws VideoTaskException
 	 */
-	public Task createVideoTask(List<Sentence> sentences) throws VideoTaskException;
+	public Task createVideoTask(Conversation conversation) throws VideoTaskException;
 
 }

@@ -1,5 +1,7 @@
 package topica.linhnv5.video.text2speech.controller;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.ArrayList;
@@ -10,6 +12,7 @@ import java.util.concurrent.ExecutionException;
 import javax.servlet.ServletContext;
 
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -37,6 +40,7 @@ import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import topica.linhnv5.video.text2speech.controller.response.TaskCreate;
 import topica.linhnv5.video.text2speech.controller.response.TaskInfo;
+import topica.linhnv5.video.text2speech.model.Conversation;
 import topica.linhnv5.video.text2speech.model.Sentence;
 import topica.linhnv5.video.text2speech.model.Task;
 import topica.linhnv5.video.text2speech.model.TaskExecute;
@@ -74,7 +78,7 @@ public class ApiController {
 	private Text2SpeechService text2SpeechService;
 
 	@SuppressWarnings("resource")
-	private List<Sentence> readSentences(File configFile) throws Exception {
+	private Conversation readExcel(File configFile) throws Exception {
 		// Input
 		FileInputStream is = new FileInputStream(configFile);
 
@@ -126,10 +130,7 @@ public class ApiController {
 	        }
 	        
 	        // Cheek
-	        if (s.getEngSub() == null)
-	        	throw new Exception("Row "+data.getRowNum()+" error!");
-	        
-	        if (s.getEngSub().equals(""))
+	        if (s.getEngSub() == null || s.getEngSub().equals(""))
 	        	continue;
 
 	        System.out.println("Eng: "+s.getEngSub()+" vie: "+s.getVieSub());
@@ -148,7 +149,103 @@ public class ApiController {
         }
     
         System.out.println("Sentences= "+sentences.size());
-        return sentences;
+        return new Conversation(sentences);
+	}
+
+	@SuppressWarnings("resource")
+	private static byte[] writeExcel(Conversation conversation) {
+		// Blank workbook
+        XSSFWorkbook workbook = new XSSFWorkbook(); 
+         
+        // Create a blank sheet
+        XSSFSheet sheet = workbook.createSheet("Data");
+
+        int rownum = 0, cellnum = 0;
+
+        // Header
+        Row row = sheet.createRow(rownum++); Cell cell;
+
+		String[] header = new String[] {"engSub", "engApi", "vieSub"};
+
+		for (cellnum = 0; cellnum < header.length; cellnum++) {
+			cell = row.createCell(cellnum, CellType.STRING);
+			cell.setCellValue(header[cellnum]);
+		}
+
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+		try {
+			// 
+			for (Sentence s : conversation.getListOfSentences()) {
+		        row = sheet.createRow(rownum++);
+
+				cellnum = 0;
+
+				cell = row.createCell(cellnum++, CellType.STRING);
+				cell.setCellValue(s.getEngSub());
+
+				cell = row.createCell(cellnum++, CellType.STRING);
+				cell.setCellValue(s.getEngApi());
+
+				cell = row.createCell(cellnum++, CellType.STRING);
+				cell.setCellValue(s.getVieSub());
+			}
+
+			// Auto size
+			for (cellnum = 0; cellnum < header.length; cellnum++)
+				sheet.autoSizeColumn(cellnum);
+
+			// Write the workbook in file system
+	        workbook.write(bos);
+	        bos.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+        return bos.toByteArray();
+	}
+
+	@GetMapping(path = "/conversation")
+	@ApiOperation(value = "Given excel file of english sentences, add vietnam sub, api and return", response = String.class, tags = "Conversation")
+	@ApiResponses({
+		@ApiResponse(code = 200, message = "Successful"),
+		@ApiResponse(code = 204, message = "Error occur")
+	})
+	public ResponseEntity<?> getSubtitle(
+			@ApiParam(value = "Input file (excel)", required = false)		
+			@RequestParam(value = "input", required = false)
+				MultipartFile input
+			) throws Exception {
+		try {
+			// Check config
+			if (input == null)
+				throw new Exception();
+
+			// 
+			File f = FileUtil.matchFileName(inFolder, input.getOriginalFilename());
+			input.transferTo(f);
+
+			// Read conversation
+			Conversation conversation = readExcel(f);
+
+			// Return value
+			MediaType mediaType = getMediaTypeForFileName("a.xlsx");
+
+			byte[] data = writeExcel(conversation);
+			InputStreamResource resource = new InputStreamResource(new ByteArrayInputStream(data));
+
+			return ResponseEntity.ok()
+					// Content-Disposition
+					.header(HttpHeaders.CONTENT_DISPOSITION, "attachment;filename="+input.getOriginalFilename())
+					// Content-Type
+					.contentType(mediaType)
+					// Contet-Length
+					.contentLength(data.length) //
+					.body(resource);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return new ResponseEntity<TaskCreate>(HttpStatus.NO_CONTENT);
 	}
 
 	@PostMapping(path = "/task.create")
@@ -172,10 +269,12 @@ public class ApiController {
 		try {
 			File f = FileUtil.matchFileName(inFolder, input.getOriginalFilename());
 			input.transferTo(f);
-			List<Sentence> sentences = readSentences(f);
+
+			// Read conversation
+			Conversation conversation = readExcel(f);
 
 			// Create and return a task
-			Task task = videoTaskService.createVideoTask(sentences);
+			Task task = videoTaskService.createVideoTask(conversation);
 
 			// task input
 			task.setInputFile(f.getName());
