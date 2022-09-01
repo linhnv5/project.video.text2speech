@@ -21,7 +21,7 @@
 		<javacpp.ffmpeg.version>4.1-1.4.4</javacpp.ffmpeg.version>
 		<swagger.version>2.9.2</swagger.version>
 		<poi.version>3.17</poi.version>
-		<jsoup.version>1.8.3</jsoup.version>
+		<jsoup.version>1.15.3</jsoup.version>
 		<google.translate.version>1.93.0</google.translate.version>
 		<ibm.watson.version>8.0.1</ibm.watson.version>
 	</properties>
