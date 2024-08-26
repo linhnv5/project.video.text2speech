@@ -19,7 +19,7 @@
 		<java.version>1.8</java.version>
 		<jsp.version>2.3.1</jsp.version>
 		<javacpp.ffmpeg.version>4.1-1.4.4</javacpp.ffmpeg.version>
-		<swagger.version>2.9.2</swagger.version>
+		<swagger.version>2.10.0</swagger.version>
 		<poi.version>3.17</poi.version>
 		<jsoup.version>1.8.3</jsoup.version>
 		<google.translate.version>1.93.0</google.translate.version>
